@@ -2,16 +2,42 @@ const path = require("path");
 const fs = require("fs");
 const ffmpegPath = require("ffmpeg-static");
 const ffmpeg = require("fluent-ffmpeg");
-const axios = require("axios");
 const { execFile } = require("child_process");
+const winston = require("winston");
+require("dotenv").config(); // Load environment variables
 
-// Set the path to the ffmpeg binary
 ffmpeg.setFfmpegPath(ffmpegPath);
+
+const logger = winston.createLogger({
+  level: "error",
+  format: winston.format.json(),
+  transports: [new winston.transports.File({ filename: "error.log" })],
+});
+
+const execPromise = (cmd, args) =>
+  new Promise((resolve, reject) => {
+    execFile(cmd, args, (error, stdout, stderr) => {
+      if (error) {
+        reject(error);
+        console.log(error);
+      } else {
+        resolve(stdout);
+        console.log(stdout);
+      }
+    });
+  });
 
 exports.downloadController = async (req, res) => {
   const { url } = req.body;
-  // console.log(url);
+  console.log(process.env.INSTAGRAM_USERNAME, process.env.INSTAGRAM_PASSWORD);
+  if (!url || typeof url !== "string") {
+    return res
+      .status(400)
+      .json({ error: "Invalid input. URL must be a string." });
+  }
+
   const modifiedUrl = url.endsWith("/") ? url.slice(0, -1) : url;
+
   if (
     !modifiedUrl ||
     (!modifiedUrl.includes("youtube.com") &&
@@ -45,75 +71,105 @@ exports.downloadController = async (req, res) => {
       fs.mkdirSync(outputPath, { recursive: true });
     }
 
-    // Function to execute youtube-dl command
-    const execPromise = (cmd, args) =>
-      new Promise((resolve, reject) => {
-        execFile(cmd, args, (error, stdout, stderr) => {
-          if (error) {
-            reject(error);
-          } else {
-            resolve(stdout);
-          }
-        });
-      });
-
     const ytdlPath = path.resolve(
       __dirname,
       "../node_modules/youtube-dl-exec/bin/yt-dlp"
     );
 
-    // Download highest quality video and audio using youtube-dl
     const videoArgs = [
       "--format",
       "bestvideo[ext=mp4]/best",
       "--output",
       videoOutputFile,
+      "--username",
+      process.env.INSTAGRAM_USERNAME,
+      "--password",
+      process.env.INSTAGRAM_PASSWORD,
       modifiedUrl,
     ];
+
     const audioArgs = [
       "--format",
       "bestaudio[ext=m4a]/best",
       "--output",
       audioOutputFile,
+      "--username",
+      process.env.INSTAGRAM_USERNAME,
+      "--password",
+      process.env.INSTAGRAM_PASSWORD,
       modifiedUrl,
     ];
 
-    await Promise.all([
-      execPromise(ytdlPath, videoArgs),
-      execPromise(ytdlPath, audioArgs),
-    ]);
+    try {
+      await Promise.all([
+        execPromise(ytdlPath, videoArgs),
+        execPromise(ytdlPath, audioArgs),
+      ]);
+    } catch (error) {
+      logger.error("Error downloading video or audio", { error });
+      if (error.message.includes("404")) {
+        return res.status(404).json({
+          error:
+            "Content not found. The URL might be incorrect or the content is unavailable.",
+        });
+      } else if (error.message.includes("rate-limit")) {
+        return res
+          .status(429)
+          .json({ error: "Rate limit reached. Please try again later." });
+      } else {
+        return res
+          .status(500)
+          .json({ error: "Failed to download video or audio" });
+      }
+    }
 
-    // Merge video and audio using ffmpeg
+    if (!fs.existsSync(videoOutputFile) || !fs.existsSync(audioOutputFile)) {
+      return res
+        .status(500)
+        .json({ error: "Failed to download necessary files" });
+    }
+
     ffmpeg()
       .input(videoOutputFile)
       .input(audioOutputFile)
-      .outputOptions("-c:v copy") // Avoid re-encoding video
-      .outputOptions("-c:a aac") // Use AAC codec for audio
-      .outputOptions("-b:a 192k") // Set audio bitrate to 192k
+      .outputOptions("-c:v copy")
+      .outputOptions("-c:a aac")
+      .outputOptions("-b:a 192k")
       .output(finalOutputFile)
       .on("end", () => {
-        // Clean up temporary files
         try {
           fs.unlinkSync(videoOutputFile);
           fs.unlinkSync(audioOutputFile);
         } catch (err) {
-          console.error("Error cleaning up temporary files:", err);
+          logger.error("Error cleaning up temporary files", { error: err });
+          return res
+            .status(500)
+            .json({ error: "Failed to clean up temporary files" });
         }
 
-        res.status(200).json(path.basename(finalOutputFile));
+        res.status(200).json({ file: path.basename(finalOutputFile) });
       })
       .on("error", (err) => {
-        console.error("Error merging video and audio:", err);
+        logger.error("Error merging video and audio", { error: err });
         res.status(500).json({ error: "Failed to merge video and audio" });
       })
       .run();
   } catch (error) {
-    console.error("Error processing request:", error);
-
+    logger.error("Error processing request", { error });
     if (error.message.includes("No such format")) {
-      res.status(400).json({ error: "Invalid URL or format not found" });
+      return res.status(400).json({ error: "Invalid URL or format not found" });
     } else {
-      res.status(500).json({ error: "Failed to process download request" });
+      return res
+        .status(500)
+        .json({ error: "Failed to process download request" });
     }
   }
 };
+
+process.on("uncaughtException", (error) => {
+  logger.error("Uncaught Exception", { error });
+});
+
+process.on("unhandledRejection", (reason, promise) => {
+  logger.error("Unhandled Rejection", { reason });
+});

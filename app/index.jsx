@@ -1,3 +1,6 @@
+import * as FileSystem from "expo-file-system";
+import { Platform } from "react-native";
+import * as WebBrowser from "expo-web-browser";
 import React, { useState } from "react";
 import {
   View,
@@ -23,22 +26,74 @@ function App() {
         url,
       });
 
-      const videoName = response.data;
-      downloadedVideos.push(videoName);
+      const videoName = response.data.file;
 
-      // const downloadUrl = `${connection}/downloads/${videoName}`;
-      // const videoResponse = await fetch(downloadUrl);
-      // const videoBlob = await videoResponse.blob();
+      const downloadUrl = `${connection}/downloads/${videoName}`;
 
-      if (!videoBlob.type.startsWith("video/")) {
-        throw new Error("Downloaded file is not a video");
+      if (Platform.OS === "web") {
+        // Fetch the video data
+        const videoResponse = await fetch(downloadUrl);
+        const videoBlob = await videoResponse.blob();
+
+        // Verify the blob data
+        if (!videoBlob.type.startsWith("video/")) {
+          throw new Error("Downloaded file is not a video");
+        }
+
+        // Create a temporary URL for the video blob
+        const videoBlobUrl = URL.createObjectURL(videoBlob);
+
+        // Create a link element
+        const link = document.createElement("a");
+        link.href = videoBlobUrl;
+        link.setAttribute("download", videoName);
+
+        // Append the link to the body
+        document.body.appendChild(link);
+
+        // Trigger the click event to start download
+        link.click();
+
+        // Clean up: Remove the link and revoke the blob URL
+        document.body.removeChild(link);
+        URL.revokeObjectURL(videoBlobUrl);
+      } else {
+        // For mobile platforms (iOS/Android)
+        const videoUri = `${FileSystem.documentDirectory}${videoName}`;
+
+        const videoResponse = await fetch(downloadUrl);
+        const videoBlob = await videoResponse.blob();
+
+        if (!videoBlob.type.startsWith("video/")) {
+          throw new Error("Downloaded file is not a video");
+        }
+
+        const base64Data = await videoBlobToBase64(videoBlob);
+
+        await FileSystem.writeAsStringAsync(videoUri, base64Data, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+
+        downloadedVideos.push(videoUri);
+
+        // Now `videoUri` can be used to play or share the video in the app
       }
-
-      // In React Native, you'll need a different approach to download and save files (e.g., using expo-file-system)
     } catch (error) {
       console.error(`Error downloading video at index ${index + 1}:`, error);
       throw new Error(`Failed to download video at index ${index + 1}`);
     }
+  };
+
+  // Helper function to convert blob to base64 (for mobile platforms)
+  const videoBlobToBase64 = (blob) => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        resolve(reader.result.split(",")[1]);
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
   };
 
   const downloadAll = async (e) => {
