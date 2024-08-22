@@ -1,7 +1,4 @@
-import * as FileSystem from "expo-file-system";
-import { Platform } from "react-native";
-import * as WebBrowser from "expo-web-browser";
-import React, { useState } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   View,
   TextInput,
@@ -9,91 +6,89 @@ import {
   TouchableOpacity,
   ScrollView,
   ActivityIndicator,
+  Alert,
+  RefreshControl,
 } from "react-native";
 import axios from "axios";
+import * as FileSystem from "expo-file-system";
+import * as MediaLibrary from "expo-media-library";
+import { Platform } from "react-native";
 
-function App() {
+const App = () => {
   const [inputStates, setInputStates] = useState([""]); // Initialize with one empty input
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
   const [errorDetails, setErrorDetails] = useState([]); // Track individual errors for each input
-  let downloadedVideos = [];
-  const connection = "http://localhost:8080"; // Replace with your actual API URL
+  const [refreshing, setRefreshing] = useState(false);
+  const connection = "http://192.168.1.31:8080"; // Replace with your actual API URL
 
-  const handleDownload = async (url, index) => {
+  useEffect(() => {
+    requestPermissions();
+  }, []);
+
+  const requestPermissions = async () => {
     try {
-      const response = await axios.post(`${connection}/download/video`, {
-        url,
-      });
-
-      const videoName = response.data.file;
-
-      const downloadUrl = `${connection}/downloads/${videoName}`;
-
-      if (Platform.OS === "web") {
-        // Fetch the video data
-        const videoResponse = await fetch(downloadUrl);
-        const videoBlob = await videoResponse.blob();
-
-        // Verify the blob data
-        if (!videoBlob.type.startsWith("video/")) {
-          throw new Error("Downloaded file is not a video");
-        }
-
-        // Create a temporary URL for the video blob
-        const videoBlobUrl = URL.createObjectURL(videoBlob);
-
-        // Create a link element
-        const link = document.createElement("a");
-        link.href = videoBlobUrl;
-        link.setAttribute("download", videoName);
-
-        // Append the link to the body
-        document.body.appendChild(link);
-
-        // Trigger the click event to start download
-        link.click();
-
-        // Clean up: Remove the link and revoke the blob URL
-        document.body.removeChild(link);
-        URL.revokeObjectURL(videoBlobUrl);
-      } else {
-        // For mobile platforms (iOS/Android)
-        const videoUri = `${FileSystem.documentDirectory}${videoName}`;
-
-        const videoResponse = await fetch(downloadUrl);
-        const videoBlob = await videoResponse.blob();
-
-        if (!videoBlob.type.startsWith("video/")) {
-          throw new Error("Downloaded file is not a video");
-        }
-
-        const base64Data = await videoBlobToBase64(videoBlob);
-
-        await FileSystem.writeAsStringAsync(videoUri, base64Data, {
-          encoding: FileSystem.EncodingType.Base64,
-        });
-
-        downloadedVideos.push(videoUri);
-
-        // Now `videoUri` can be used to play or share the video in the app
+      const { status: mediaStatus } =
+        await MediaLibrary.requestPermissionsAsync();
+      if (mediaStatus !== "granted") {
+        Alert.alert(
+          "Permission required",
+          "Permission to access media library is required!"
+        );
       }
+      // Additional permissions may be needed for Android 10+ (WRITE_EXTERNAL_STORAGE)
     } catch (error) {
-      console.error(`Error downloading video at index ${index + 1}:`, error);
-      throw new Error(`Failed to download video at index ${index + 1}`);
+      console.error("Error requesting permissions:", error);
     }
   };
 
-  // Helper function to convert blob to base64 (for mobile platforms)
-  const videoBlobToBase64 = (blob) => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        resolve(reader.result.split(",")[1]);
-      };
-      reader.onerror = reject;
-      reader.readAsDataURL(blob);
-    });
+
+  const handleDownload = async (url, index) => {
+    try {
+      // Step 1: Download the video file
+      const response = await axios.post(`${connection}/download/video`, {
+        url,
+      });
+      const videoName = response.data.file;
+      const downloadUrl = `${connection}/downloads/${videoName}`;
+      const videoUri = `${FileSystem.documentDirectory}${videoName}`;
+
+      // Check if file exists before downloading
+      console.log("Downloading video from:", downloadUrl);
+      const { uri } = await FileSystem.downloadAsync(downloadUrl, videoUri);
+      console.log("Video downloaded to:", uri);
+
+      // Step 2: Save the video to the media library
+      const asset = await MediaLibrary.saveToLibraryAsync(uri);
+
+      if (!asset) {
+        throw new Error(
+          "Failed to save video to media library. Asset is null."
+        );
+      }
+
+      console.log("Video saved to media library:", asset);
+
+      // Step 3: Create an album and add the asset if on Android
+      const albumName = "Download";
+      if (Platform.OS === "android") {
+        // For Android, create an album with the asset
+        await MediaLibrary.createAlbumAsync(albumName, asset, false);
+      } else {
+        // For iOS, create the album and add the asset to it
+        const album = await MediaLibrary.createAlbumAsync(
+          albumName,
+          asset,
+          false
+        );
+        console.log("Album created or found:", album);
+      }
+
+      Alert.alert("Success", "Video downloaded and saved successfully!");
+    } catch (error) {
+      console.error(`Error downloading video at index ${index + 1}:`, error);
+      setErrorDetails((prev) => [...prev, { index, message: error.message }]);
+    }
   };
 
   const downloadAll = async (e) => {
@@ -117,10 +112,8 @@ function App() {
       console.error("Error during download all:", error);
       setError("An error occurred during the download. Please try again.");
     } finally {
-      // await cleanup();
       setIsLoading(false);
       setInputStates([""]); // Reset input fields after processing
-      downloadedVideos = [];
     }
   };
 
@@ -132,6 +125,20 @@ function App() {
     });
   };
 
+  // Refresh function to reload content
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      // Refresh logic, e.g., re-fetching data or resetting states
+      setInputStates([""]); // Reset input fields or perform other refresh actions
+      // You can add any data fetching or other refreshing logic here
+    } catch (error) {
+      console.error("Error refreshing content:", error);
+    } finally {
+      setRefreshing(false);
+    }
+  }, []);
+
   return (
     <ScrollView
       contentContainerStyle={{
@@ -140,6 +147,13 @@ function App() {
         alignItems: "center",
         backgroundColor: "black",
       }}
+      refreshControl={
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={onRefresh}
+          colors={["#4F46E5"]} // Customize the refresh control color
+        />
+      }
     >
       <View
         style={{
@@ -224,6 +238,6 @@ function App() {
       </View>
     </ScrollView>
   );
-}
+};
 
 export default App;

@@ -29,7 +29,6 @@ const execPromise = (cmd, args) =>
 
 exports.downloadController = async (req, res) => {
   const { url } = req.body;
-  console.log(process.env.INSTAGRAM_USERNAME, process.env.INSTAGRAM_PASSWORD);
   if (!url || typeof url !== "string") {
     return res
       .status(400)
@@ -81,10 +80,10 @@ exports.downloadController = async (req, res) => {
       "bestvideo[ext=mp4]/best",
       "--output",
       videoOutputFile,
-      "--username",
-      process.env.INSTAGRAM_USERNAME,
-      "--password",
-      process.env.INSTAGRAM_PASSWORD,
+      // "--username",
+      // process.env.INSTAGRAM_USERNAME,
+      // "--password",
+      // process.env.INSTAGRAM_PASSWORD,
       modifiedUrl,
     ];
 
@@ -93,10 +92,10 @@ exports.downloadController = async (req, res) => {
       "bestaudio[ext=m4a]/best",
       "--output",
       audioOutputFile,
-      "--username",
-      process.env.INSTAGRAM_USERNAME,
-      "--password",
-      process.env.INSTAGRAM_PASSWORD,
+      // "--username",
+      // process.env.INSTAGRAM_USERNAME,
+      // "--password",
+      // process.env.INSTAGRAM_PASSWORD,
       modifiedUrl,
     ];
 
