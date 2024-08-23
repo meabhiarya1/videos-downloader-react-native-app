@@ -11,7 +11,7 @@ import {
 } from "react-native";
 import axios from "axios";
 import * as FileSystem from "expo-file-system";
-import * as MediaLibrary from "expo-media-library";
+import { shareAsync } from "expo-sharing";
 import { Platform } from "react-native";
 
 const App = () => {
@@ -22,27 +22,6 @@ const App = () => {
   const [refreshing, setRefreshing] = useState(false);
   const connection = "http://192.168.1.31:8080"; // Replace with your actual API URL
 
-  useEffect(() => {
-    requestPermissions();
-  }, []);
-
-  const requestPermissions = async () => {
-    try {
-      const { status: mediaStatus } =
-        await MediaLibrary.requestPermissionsAsync();
-      if (mediaStatus !== "granted") {
-        Alert.alert(
-          "Permission required",
-          "Permission to access media library is required!"
-        );
-      }
-      // Additional permissions may be needed for Android 10+ (WRITE_EXTERNAL_STORAGE)
-    } catch (error) {
-      console.error("Error requesting permissions:", error);
-    }
-  };
-
-
   const handleDownload = async (url, index) => {
     try {
       // Step 1: Download the video file
@@ -51,43 +30,44 @@ const App = () => {
       });
       const videoName = response.data.file;
       const downloadUrl = `${connection}/downloads/${videoName}`;
-      const videoUri = `${FileSystem.documentDirectory}${videoName}`;
 
-      // Check if file exists before downloading
-      console.log("Downloading video from:", downloadUrl);
-      const { uri } = await FileSystem.downloadAsync(downloadUrl, videoUri);
-      console.log("Video downloaded to:", uri);
-
-      // Step 2: Save the video to the media library
-      const asset = await MediaLibrary.saveToLibraryAsync(uri);
-
-      if (!asset) {
-        throw new Error(
-          "Failed to save video to media library. Asset is null."
-        );
-      }
-
-      console.log("Video saved to media library:", asset);
-
-      // Step 3: Create an album and add the asset if on Android
-      const albumName = "Download";
-      if (Platform.OS === "android") {
-        // For Android, create an album with the asset
-        await MediaLibrary.createAlbumAsync(albumName, asset, false);
-      } else {
-        // For iOS, create the album and add the asset to it
-        const album = await MediaLibrary.createAlbumAsync(
-          albumName,
-          asset,
-          false
-        );
-        console.log("Album created or found:", album);
-      }
-
+      const result = await FileSystem.downloadAsync(
+        downloadUrl,
+        FileSystem.documentDirectory + videoName
+      );
+      console.log("Video downloaded to:", result.uri);
+      save(result.uri, videoName, result.headers["Content-Type"]);
       Alert.alert("Success", "Video downloaded and saved successfully!");
     } catch (error) {
       console.error(`Error downloading video at index ${index + 1}:`, error);
       setErrorDetails((prev) => [...prev, { index, message: error.message }]);
+    }
+  };
+
+  const save = async (uri, filename, mimetype) => {
+    if (Platform.OS === "android") {
+      const permissions =
+        await FileSystem.StorageAccessFramework.requestDirectoryPermissionsAsync();
+      if (permissions.granted) {
+        const base64 = await FileSystem.readAsStringAsync(uri, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+        await FileSystem.StorageAccessFramework.createFileAsync(
+          permissions.directoryUri,
+          filename,
+          mimetype
+        )
+          .then(async (uri) => {
+            await FileSystem.writeAsStringAsync(uri, base64, {
+              encoding: FileSystem.EncodingType.Base64,
+            });
+          })
+          .catch((e) => console.log(e));
+      } else {
+        shareAsync(uri);
+      }
+    } else {
+      shareAsync(uri);
     }
   };
 
@@ -131,7 +111,8 @@ const App = () => {
     try {
       // Refresh logic, e.g., re-fetching data or resetting states
       setInputStates([""]); // Reset input fields or perform other refresh actions
-      // You can add any data fetching or other refreshing logic here
+      setError("");
+      setErrorDetails([]);
     } catch (error) {
       console.error("Error refreshing content:", error);
     } finally {
