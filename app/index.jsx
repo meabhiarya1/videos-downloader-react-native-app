@@ -113,6 +113,7 @@ const App = () => {
       setInputStates([""]); // Reset input fields or perform other refresh actions
       setError("");
       setErrorDetails([]);
+      setIsLoading(false);
     } catch (error) {
       console.error("Error refreshing content:", error);
     } finally {

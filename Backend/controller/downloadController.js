@@ -75,7 +75,9 @@ exports.downloadController = async (req, res) => {
   try {
     const timestamp = Date.now();
     const outputPath = path.resolve(__dirname, "../downloads");
-
+    if (!fs.existsSync(outputPath)) {
+      fs.mkdirSync(outputPath, { recursive: true });
+    }
     // Clear the downloads folder before starting the download
     try {
       await clearDownloadsFolder(outputPath);
@@ -96,10 +98,6 @@ exports.downloadController = async (req, res) => {
       `${outputTemplate}-audio.m4a`
     );
     const finalOutputFile = path.join(outputPath, `${outputTemplate}.mp4`);
-
-    if (!fs.existsSync(outputPath)) {
-      fs.mkdirSync(outputPath, { recursive: true });
-    }
 
     const ytdlPath = path.resolve(
       __dirname,
