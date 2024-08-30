@@ -20,7 +20,7 @@ const App = () => {
   const [error, setError] = useState("");
   const [errorDetails, setErrorDetails] = useState([]); // Track individual errors for each input
   const [refreshing, setRefreshing] = useState(false);
-  const connection = "http://192.168.1.31:8080"; // Replace with your actual API URL
+  const connection = "http://192.168.1.20:8080"; // Replace with your actual API URL
 
   const handleDownload = async (url, index) => {
     try {
