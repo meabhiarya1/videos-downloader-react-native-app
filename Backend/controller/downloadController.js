@@ -27,6 +27,26 @@ const execPromise = (cmd, args) =>
     });
   });
 
+const clearDownloadsFolder = (folderPath) => {
+  return new Promise((resolve, reject) => {
+    fs.readdir(folderPath, (err, files) => {
+      if (err) {
+        reject(err);
+        return;
+      }
+
+      Promise.all(
+        files.map((file) => {
+          const filePath = path.join(folderPath, file);
+          return fs.promises.unlink(filePath); // Delete the file
+        })
+      )
+        .then(() => resolve())
+        .catch((error) => reject(error));
+    });
+  });
+};
+
 exports.downloadController = async (req, res) => {
   const { url } = req.body;
   if (!url || typeof url !== "string") {
@@ -40,6 +60,7 @@ exports.downloadController = async (req, res) => {
   if (
     !modifiedUrl ||
     (!modifiedUrl.includes("youtube.com") &&
+      !modifiedUrl.includes("youtu.be") &&
       !modifiedUrl.includes("instagram.com") &&
       !modifiedUrl.includes("facebook.com"))
   ) {
@@ -54,6 +75,16 @@ exports.downloadController = async (req, res) => {
   try {
     const timestamp = Date.now();
     const outputPath = path.resolve(__dirname, "../downloads");
+
+    // Clear the downloads folder before starting the download
+    try {
+      await clearDownloadsFolder(outputPath);
+    } catch (error) {
+      logger.error("Error clearing downloads folder", { error });
+      return res
+        .status(500)
+        .json({ error: "Failed to clear downloads folder" });
+    }
 
     const outputTemplate = `${sanitizedVideoId}-${timestamp}`;
     const videoOutputFile = path.join(
@@ -83,7 +114,7 @@ exports.downloadController = async (req, res) => {
       // "--username",
       // process.env.INSTAGRAM_USERNAME,
       // "--password",
-      // process.env.INSTAGRAM_PASSWORD,
+      // process.env.INSTAGRAM_PASSWORD",
       modifiedUrl,
     ];
 
@@ -93,9 +124,9 @@ exports.downloadController = async (req, res) => {
       "--output",
       audioOutputFile,
       // "--username",
-      // process.env.INSTAGRAM_USERNAME,
+      // process.env.INSTAGRAM_USERNAME",
       // "--password",
-      // process.env.INSTAGRAM_PASSWORD,
+      // process.env.INSTAGRAM_PASSWORD",
       modifiedUrl,
     ];
 
