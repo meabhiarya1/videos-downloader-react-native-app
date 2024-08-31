@@ -49,6 +49,7 @@ const clearDownloadsFolder = (folderPath) => {
 
 exports.downloadController = async (req, res) => {
   const { url } = req.body;
+
   if (!url || typeof url !== "string") {
     return res
       .status(400)
