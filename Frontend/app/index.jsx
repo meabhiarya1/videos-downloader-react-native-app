@@ -23,6 +23,7 @@ const App = () => {
   const connection = "http://192.168.1.68:8080"; // Replace with your actual API URL
 
   const handleDownload = async (url, index) => {
+    console.log(url, "handleDownload");
     try {
       // Step 1: Download the video file
       const response = await axios.post(`${connection}/download/video`, {
@@ -36,11 +37,8 @@ const App = () => {
         FileSystem.documentDirectory + videoName
       );
       console.log("Video downloaded to:", result.uri);
-      await save(result.uri, videoName, result.headers["Content-Type"]);
-      Alert.alert(
-        "Success",
-        `Video ${index + 1} downloaded and saved successfully!`
-      );
+      save(result.uri, videoName, result.headers["Content-Type"]);
+      Alert.alert("Success", "Video downloaded and saved successfully!");
     } catch (error) {
       console.error(`Error downloading video at index ${index + 1}:`, error);
       setErrorDetails((prev) => [...prev, { index, message: error.message }]);
@@ -67,10 +65,10 @@ const App = () => {
           })
           .catch((e) => console.log(e));
       } else {
-        await shareAsync(uri);
+        shareAsync(uri);
       }
     } else {
-      await shareAsync(uri);
+      shareAsync(uri);
     }
   };
 
@@ -78,15 +76,16 @@ const App = () => {
     e.preventDefault();
     setError("");
     setErrorDetails([]);
-    setIsLoading(true);  
+    setIsLoading(true);
 
     try {
-      // Ensure sequential download and saving
-      for (let i = 0; i < inputStates.length; i++) {
-        if (inputStates[i].trim() !== "") {
-          await handleDownload(inputStates[i], i);
-        }
-      }
+      const downloadPromises = inputStates.map((link, index) =>
+        handleDownload(link, index).catch((err) => {
+          setErrorDetails((prev) => [...prev, { index, message: err.message }]);
+        })
+      );
+
+      await Promise.all(downloadPromises);
 
       if (errorDetails.length > 0) {
         setError("Some downloads failed. Please check the individual errors.");
