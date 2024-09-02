@@ -1,0 +1,14 @@
+{
+  "name": "videos-downloader-react-native-app",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "start": "concurrently \"npm run start:exponative\" \"npm run start:express\"",
+    "start:exponative": "cd Frontend && npm start",
+    "start:express": "cd Backend && npm start"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": ""
+}

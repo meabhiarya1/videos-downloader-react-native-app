@@ -36,8 +36,11 @@ const App = () => {
         FileSystem.documentDirectory + videoName
       );
       console.log("Video downloaded to:", result.uri);
-      save(result.uri, videoName, result.headers["Content-Type"]);
-      Alert.alert("Success", "Video downloaded and saved successfully!");
+      await save(result.uri, videoName, result.headers["Content-Type"]);
+      Alert.alert(
+        "Success",
+        `Video ${index + 1} downloaded and saved successfully!`
+      );
     } catch (error) {
       console.error(`Error downloading video at index ${index + 1}:`, error);
       setErrorDetails((prev) => [...prev, { index, message: error.message }]);
@@ -64,10 +67,10 @@ const App = () => {
           })
           .catch((e) => console.log(e));
       } else {
-        shareAsync(uri);
+        await shareAsync(uri);
       }
     } else {
-      shareAsync(uri);
+      await shareAsync(uri);
     }
   };
 
@@ -75,15 +78,15 @@ const App = () => {
     e.preventDefault();
     setError("");
     setErrorDetails([]);
-    setIsLoading(true);
+    setIsLoading(true);  
 
     try {
-      const downloadPromises = inputStates.map((link, index) =>
-        handleDownload(link, index).catch((err) => {
-          setErrorDetails((prev) => [...prev, { index, message: err.message }]);
-        })
-      );
-      await Promise.all(downloadPromises);
+      // Ensure sequential download and saving
+      for (let i = 0; i < inputStates.length; i++) {
+        if (inputStates[i].trim() !== "") {
+          await handleDownload(inputStates[i], i);
+        }
+      }
 
       if (errorDetails.length > 0) {
         setError("Some downloads failed. Please check the individual errors.");
