@@ -22,8 +22,8 @@ const App = () => {
   const [refreshing, setRefreshing] = useState(false);
   const connection = "http://192.168.1.68:8080"; // Replace with your actual API URL
 
-  const handleDownload = async (url, index) => {
-    console.log(url, "handleDownload");
+  const handleDownload = async (url, index, directoryUri) => {
+    // console.log(url, "handleDownload");
     try {
       // Step 1: Download the video file
       const response = await axios.post(`${connection}/download/video`, {
@@ -37,7 +37,12 @@ const App = () => {
         FileSystem.documentDirectory + videoName
       );
       console.log("Video downloaded to:", result.uri);
-      save(result.uri, videoName, result.headers["Content-Type"]);
+      await save(
+        result.uri,
+        videoName,
+        result.headers["Content-Type"],
+        directoryUri
+      );
       Alert.alert("Success", "Video downloaded and saved successfully!");
     } catch (error) {
       console.error(`Error downloading video at index ${index + 1}:`, error);
@@ -45,16 +50,14 @@ const App = () => {
     }
   };
 
-  const save = async (uri, filename, mimetype) => {
+  const save = async (uri, filename, mimetype, directoryUri) => {
     if (Platform.OS === "android") {
-      const permissions =
-        await FileSystem.StorageAccessFramework.requestDirectoryPermissionsAsync();
-      if (permissions.granted) {
+      try {
         const base64 = await FileSystem.readAsStringAsync(uri, {
           encoding: FileSystem.EncodingType.Base64,
         });
         await FileSystem.StorageAccessFramework.createFileAsync(
-          permissions.directoryUri,
+          directoryUri,
           filename,
           mimetype
         )
@@ -64,8 +67,8 @@ const App = () => {
             });
           })
           .catch((e) => console.log(e));
-      } else {
-        shareAsync(uri);
+      } catch (e) {
+        console.log("Error during file saving:", e);
       }
     } else {
       shareAsync(uri);
@@ -78,12 +81,29 @@ const App = () => {
     setErrorDetails([]);
     setIsLoading(true);
 
+    let directoryUri = null;
+
+    if (Platform.OS === "android") {
+      const permissions =
+        await FileSystem.StorageAccessFramework.requestDirectoryPermissionsAsync();
+      if (permissions.granted) {
+        directoryUri = permissions.directoryUri;
+      } else {
+        setError("Storage permissions not granted");
+        setIsLoading(false);
+        return;
+      }
+    }
+
     try {
       const downloadPromises = inputStates.map((link, index) =>
-        handleDownload(link, index).catch((err) => {
+        handleDownload(link, index, directoryUri).catch((err) => {
           setErrorDetails((prev) => [...prev, { index, message: err.message }]);
         })
       );
+      console.log("inputStates", inputStates);
+
+      console.log("downloadPromises", downloadPromises);
 
       await Promise.all(downloadPromises);
 
