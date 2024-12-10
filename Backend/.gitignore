@@ -1,3 +1,12 @@
 node_modules
 
 downloads
+
+
+npm uninstall yt-dlp
+npm install yt-dlp
+rm -rf node_modules
+npm install
+npm uninstall ffmpeg-static fluent-ffmpeg
+npm install ffmpeg-static fluent-ffmpeg
+npm update yt-dlp
