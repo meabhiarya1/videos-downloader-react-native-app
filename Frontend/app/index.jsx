@@ -20,7 +20,7 @@ const App = () => {
   const [error, setError] = useState("");
   const [errorDetails, setErrorDetails] = useState([]); // Track individual errors for each input
   const [refreshing, setRefreshing] = useState(false);
-  const connection = "http://192.168.1.68:8080"; // Replace with your actual API URL
+  const connection = "http://192.168.1.54:8080"; // Replace with your actual API URL
 
   const handleDownload = async (url, index, directoryUri) => {
     // console.log(url, "handleDownload");
@@ -51,7 +51,7 @@ const App = () => {
   };
 
   const save = async (uri, filename, mimetype, directoryUri) => {
-    if (Platform.OS === "android") {
+    if (Platform.OS === "android") { 
       try {
         const base64 = await FileSystem.readAsStringAsync(uri, {
           encoding: FileSystem.EncodingType.Base64,
@@ -64,7 +64,7 @@ const App = () => {
           .then(async (uri) => {
             await FileSystem.writeAsStringAsync(uri, base64, {
               encoding: FileSystem.EncodingType.Base64,
-            });
+            });2
           })
           .catch((e) => console.log(e));
       } catch (e) {

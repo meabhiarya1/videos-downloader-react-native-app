@@ -47,6 +47,31 @@ const clearDownloadsFolder = (folderPath) => {
   });
 };
 
+const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const execWithRetry = async (cmd, args, retries = 3) => {
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      return await execPromise(cmd, args);
+    } catch (error) {
+      if (
+        error.message.includes("429") ||
+        error.message.includes("rate-limit")
+      ) {
+        logger.error(`Rate limit reached. Retry attempt ${attempt}`, { error });
+        const retryAfter = error.response?.headers?.["retry-after"];
+        const delayMs = retryAfter
+          ? parseInt(retryAfter, 10) * 1000
+          : attempt * 2000; // Exponential backoff
+        await delay(delayMs);
+      } else {
+        throw error;
+      }
+    }
+  }
+  throw new Error("Max retries reached");
+};
+
 exports.downloadController = async (req, res) => {
   const { url } = req.body;
 
@@ -79,7 +104,7 @@ exports.downloadController = async (req, res) => {
     if (!fs.existsSync(outputPath)) {
       fs.mkdirSync(outputPath, { recursive: true });
     }
-    // Clear the downloads folder before starting the download
+
     try {
       await clearDownloadsFolder(outputPath);
     } catch (error) {
@@ -110,10 +135,6 @@ exports.downloadController = async (req, res) => {
       "bestvideo[ext=mp4]/best",
       "--output",
       videoOutputFile,
-      // "--username",
-      // process.env.INSTAGRAM_USERNAME,
-      // "--password",
-      // process.env.INSTAGRAM_PASSWORD",
       modifiedUrl,
     ];
 
@@ -122,17 +143,13 @@ exports.downloadController = async (req, res) => {
       "bestaudio[ext=m4a]/best",
       "--output",
       audioOutputFile,
-      // "--username",
-      // process.env.INSTAGRAM_USERNAME",
-      // "--password",
-      // process.env.INSTAGRAM_PASSWORD",
       modifiedUrl,
     ];
 
     try {
       await Promise.all([
-        execPromise(ytdlPath, videoArgs),
-        execPromise(ytdlPath, audioArgs),
+        execWithRetry(ytdlPath, videoArgs),
+        execWithRetry(ytdlPath, audioArgs),
       ]);
     } catch (error) {
       logger.error("Error downloading video or audio", { error });
@@ -141,7 +158,7 @@ exports.downloadController = async (req, res) => {
           error:
             "Content not found. The URL might be incorrect or the content is unavailable.",
         });
-      } else if (error.message.includes("rate-limit")) {
+      } else if (error.message.includes("429")) {
         return res
           .status(429)
           .json({ error: "Rate limit reached. Please try again later." });
